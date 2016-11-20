@@ -1,0 +1,12 @@
+{
+  "name": "CLICurseModpackDownloader",
+  "version": "0.0.1",
+  "dependencies": {
+    "minimist": "^1.2.0",
+    "mkdirp": "^0.5.1",
+    "node-rest-client": "^2.0.1",
+    "prompt": "^1.0.0",
+    "request": "^2.79.0",
+    "unzip": "^0.1.11"
+  }
+}
