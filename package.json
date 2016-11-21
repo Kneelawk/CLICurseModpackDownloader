@@ -5,6 +5,7 @@
     "minimist": "^1.2.0",
     "mkdirp": "^0.5.1",
     "node-rest-client": "^2.0.1",
+    "progress": "^1.1.8",
     "prompt": "^1.0.0",
     "request": "^2.79.0",
     "unzip": "^0.1.11"

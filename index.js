@@ -1,3 +1,5 @@
+'use strict';
+
 // builtin modules
 const fs = require('fs');
 const path = require('path');
@@ -7,6 +9,7 @@ const minimist = require('minimist');
 const unzip = require('unzip');
 const prompt = require('prompt');
 const mkdirp = require('mkdirp');
+const ProgressBar = require('progress');
 // my modules
 const downloader = require('./downloader.js');
 const Curse = require('./curse.js').Curse;
@@ -14,58 +17,6 @@ const curseMods = require('./curseMods.js');
 
 // constants
 const overridesLen = 'overrides/'.length;
-
-function getStringFromStream(stream) {
-  let callback = new Callback();
-
-  let str = '';
-
-  stream.on('data', (chunk) => {
-    str += chunk;
-  }).on('end', () => {
-    callback.emit('finish', str);
-  });
-
-  return callback;
-}
-
-let completedMods = 0;
-
-function downloadMod(outputDir, url, disabled, numOfMods, percentUpdate) {
-  let filename = downloader.getFileName(url) + (disabled ? '.disabled' : '');
-  let outputPath = path.join(outputDir, 'mods', filename);
-
-  let download = downloader.download(url, fs.createWriteStream(outputPath));
-
-  if (percentUpdate) {
-    let lastLoggedProgress = 0;
-    download.on('progress', (progress) => {
-      if (progress.outOf > 0) {
-        let percent = Math.floor(progress.progress * 100 / progress.outOf);
-        if (percent % percentUpdate < lastLoggedProgress % percentUpdate) {
-          console.log(percent + '%: ' + filename);
-        }
-        lastLoggedProgress = percent;
-      } else {
-        if (progress.progress % (10240 * percentUpdate) < lastLoggedProgress % (10240 * percentUpdate)) {
-          console.log(Math.floor(progress.progress / 1024) + 'KiB: ' + filename);
-        }
-        lastLoggedProgress = progress.progress;
-      }
-    });
-  }
-
-  download.on('error', (error) => {
-    console.log('Download error:');
-    console.log(error);
-  }).on('end', () => {
-    // nodejs runs on a single thread
-    completedMods++;
-
-    console.log('Completed download: ' + filename);
-    console.log('Completed: ' + completedMods + ' / ' + numOfMods + ' (' + Math.floor(completedMods * 100 / numOfMods) + '%)');
-  });
-}
 
 let args = minimist(process.argv.slice(2));
 
@@ -99,6 +50,71 @@ if (args.password) {
 let percentUpdate;
 if (args.percentupdate) {
   percentUpdate = args.percentupdate;
+  if (isNaN(parseFloat(percentUpdate)) || !isFinite(percentUpdate)) {
+    console.error('percentupdate must be a number.');
+    process.exit(1);
+  }
+}
+
+let progressBar;
+if (args.progress) {
+  progressBar = args.progress;
+}
+
+function getStringFromStream(stream) {
+  let callback = new Callback();
+
+  let str = '';
+
+  stream.on('data', (chunk) => {
+    str += chunk;
+  }).on('end', () => {
+    callback.emit('finish', str);
+  });
+
+  return callback;
+}
+
+let completedMods = 0;
+
+function downloadMod(outputDir, url, disabled, numOfMods, percentUpdate, modsProgressBar) {
+  let filename = downloader.getFileName(url) + (disabled ? '.disabled' : '');
+  let outputPath = path.join(outputDir, 'mods', filename);
+
+  let download = downloader.download(url, fs.createWriteStream(outputPath));
+
+  if (percentUpdate) {
+    let lastLoggedProgress = 0;
+    download.on('progress', (progress) => {
+      if (progress.outOf > 0) {
+        let percent = Math.floor(progress.progress * 100 / progress.outOf);
+        if (percent % percentUpdate < lastLoggedProgress % percentUpdate) {
+          console.log(percent + '%: ' + filename);
+        }
+        lastLoggedProgress = percent;
+      } else {
+        if (progress.progress % (10240 * percentUpdate) < lastLoggedProgress % (10240 * percentUpdate)) {
+          console.log(Math.floor(progress.progress / 1024) + 'KiB: ' + filename);
+        }
+        lastLoggedProgress = progress.progress;
+      }
+    });
+  }
+
+  download.on('error', (error) => {
+    console.log('Download error:');
+    console.log(error);
+  }).on('end', () => {
+    // nodejs runs on a single thread
+    completedMods++;
+
+    if (modsProgressBar == 'log') {
+      console.log('Completed download: ' + filename);
+      console.log('Completed: ' + completedMods + ' / ' + numOfMods + ' (' + Math.floor(completedMods * 100 / numOfMods) + '%)');
+    } else if (modsProgressBar) {
+      modsProgressBar.tick();
+    }
+  });
 }
 
 prompt.override = {
@@ -157,14 +173,22 @@ prompt.get([{
 
           let files = manifest.files;
           console.log('Downloading files...');
+
+          if (progressBar == 'bar') {
+            progressBar = new ProgressBar('Downloading [:bar] :percent (:current / :total)', {
+              total: files.length,
+              width: 100
+            });
+          }
+
           files.forEach((element) => {
             curseMods.getFileDownloadUrl(c, element.projectID, element.fileID).on('finish', (url) => {
-              downloadMod(outputDir, url, !element.required, files.length);
+              downloadMod(outputDir, url, !element.required, files.length, percentUpdate, progressBar);
             }).on('error', (error) => {
               if (error.type == 'bad response code') {
                 if (error.response.statusCode == 404) {
                   curseMods.getLatestDownloadUrl(c, element.projectID, manifest.minecraft.version).on('finish', (url) => {
-                    downloadMod(outputDir, url, !element.required, files.length);
+                    downloadMod(outputDir, url, !element.required, files.length, percentUpdate, progressBar);
                   }).on('error', (error) => {
                     console.log(error);
                   });
@@ -177,7 +201,9 @@ prompt.get([{
         entry.pipe(fs.createWriteStream(path.join(outputDir, 'manifest.json')));
       } else if (entry.path.startsWith('overrides/') && entry.type == 'File') {
         let outPath = entry.path.slice(overridesLen);
-        console.log('Extracting override: ' + outPath);
+        if (args.logoverrides) {
+          console.log('Extracting override: ' + outPath);
+        }
         if (!fs.existsSync(path.join(outputDir, outPath, '..'))) {
           mkdirp.sync(path.join(outputDir, outPath, '..'));
         }
