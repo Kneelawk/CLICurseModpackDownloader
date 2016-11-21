@@ -36,7 +36,7 @@ function download(url, out) {
     callback.emit('end');
   }).on('error', (error) => {
     callback.emit('error', error);
-  });
+  }).pipe(out);
 
   return callback;
 }
