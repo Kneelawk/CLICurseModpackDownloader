@@ -5,7 +5,7 @@ class DownloadCallback extends Callback {}
 
 /*
  * Downloads a file from url to out.
- * ulr: Url to download from.
+ * url: Url to download from.
  * out: WriteStream to be written to.
  */
 function download(url, out) {
@@ -13,6 +13,8 @@ function download(url, out) {
   let downloaded = 0;
 
   let callback = new DownloadCallback();
+
+  let errorState = false;
 
   request(url).on('response', (response) => {
     if (Math.floor(response.statusCode / 100) == 2) {
@@ -32,11 +34,47 @@ function download(url, out) {
       progress: downloaded,
       outOf: size
     });
-  }).on('end', () => {
-    callback.emit('end');
   }).on('error', (error) => {
+    errorState = true;
     callback.emit('error', error);
+  }).on('end', () => {
+    if (!errorState) {
+      // finish implies success
+      callback.emit('finish');
+    }
   }).pipe(out);
+
+  return callback;
+}
+
+function downloadWithRetriesImpl(url, out, maxRetries, numRetries) {
+  let callback = new DownloadCallback();
+
+  download(url, out).on('progress', (progress) => {
+    callback.emit('progress', progress);
+  }).on('finish', () => {
+    callback.emit('finish');
+  }).on('error', (error) => {
+    if (error.type == 'bad response code') {
+      callback.emit('error', error);
+    } else if (numRetries < maxRetries) {
+      downloadWithRetriesImpl(url, out, maxRetries, numRetries + 1).on('progress', (progress) => {
+        callback.emit('progress', progress);
+      }).on('finish', () => {
+        callback.emit('finish');
+      }).on('retry', (retry) => {
+        callback.emit('retry', retry);
+      }).on('error', (error) => {
+        callback.emit('error', error);
+      });
+      callback.emit('retry', {
+        error,
+        numRetries
+      });
+    } else {
+      callback.emit('error', error);
+    }
+  });
 
   return callback;
 }
@@ -47,5 +85,8 @@ function getFileName(url) {
 
 module.exports = {
   download,
-  getFileName
+  getFileName,
+  downloadWithRetries: function(url, out, maxRetries) {
+    return downloadWithRetriesImpl(url, out, maxRetries, 0);
+  }
 };

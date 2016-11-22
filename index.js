@@ -81,19 +81,21 @@ function downloadMod(outputDir, url, disabled, numOfMods, percentUpdate, modsPro
   let filename = downloader.getFileName(url) + (disabled ? '.disabled' : '');
   let outputPath = path.join(outputDir, 'mods', filename);
 
-  let download = downloader.download(url, fs.createWriteStream(outputPath));
+  let out = fs.createWriteStream(outputPath);
 
-  if (percentUpdate) {
+  let download = downloader.downloadWithRetries(url, out, 10);
+
+  if (typeof(percentUpdate) == 'number' && percentUpdate > 0) {
     let lastLoggedProgress = 0;
     download.on('progress', (progress) => {
       if (progress.outOf > 0) {
         let percent = Math.floor(progress.progress * 100 / progress.outOf);
-        if (percent % percentUpdate < lastLoggedProgress % percentUpdate) {
+        if (Math.floor(percent / percentUpdate) > Math.floor(lastLoggedProgress / percentUpdate)) {
           console.log(percent + '%: ' + filename);
         }
         lastLoggedProgress = percent;
       } else {
-        if (progress.progress % (10240 * percentUpdate) < lastLoggedProgress % (10240 * percentUpdate)) {
+        if (Math.floor(progress.progress / percentUpdate) > Math.floor(lastLoggedProgress / percentUpdate)) {
           console.log(Math.floor(progress.progress / 1024) + 'KiB: ' + filename);
         }
         lastLoggedProgress = progress.progress;
@@ -104,7 +106,9 @@ function downloadMod(outputDir, url, disabled, numOfMods, percentUpdate, modsPro
   download.on('error', (error) => {
     console.log('Download error:');
     console.log(error);
-  }).on('end', () => {
+  }).on('retry', (retry) => {
+    console.log('Retrying ' + filename);
+  }).on('finish', () => {
     // nodejs runs on a single thread
     completedMods++;
 
@@ -114,6 +118,8 @@ function downloadMod(outputDir, url, disabled, numOfMods, percentUpdate, modsPro
     } else if (modsProgressBar) {
       modsProgressBar.tick();
     }
+
+    out.end();
   });
 }
 
@@ -172,7 +178,7 @@ prompt.get([{
           }
 
           let files = manifest.files;
-          console.log('Downloading files...');
+          console.log('Downloading ' + files.length + ' files...');
 
           if (progressBar == 'bar') {
             progressBar = new ProgressBar('Downloading [:bar] :percent (:current / :total)', {
@@ -183,12 +189,12 @@ prompt.get([{
 
           files.forEach((element) => {
             curseMods.getFileDownloadUrl(c, element.projectID, element.fileID).on('finish', (url) => {
-              downloadMod(outputDir, url, !element.required, files.length, percentUpdate, progressBar);
+              downloadMod(outputDir, url, element.required == false, files.length, percentUpdate, progressBar);
             }).on('error', (error) => {
               if (error.type == 'bad response code') {
                 if (error.response.statusCode == 404) {
                   curseMods.getLatestDownloadUrl(c, element.projectID, manifest.minecraft.version).on('finish', (url) => {
-                    downloadMod(outputDir, url, !element.required, files.length, percentUpdate, progressBar);
+                    downloadMod(outputDir, url, element.required == false, files.length, percentUpdate, progressBar);
                   }).on('error', (error) => {
                     console.log(error);
                   });
