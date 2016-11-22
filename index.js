@@ -48,10 +48,10 @@ if (args.password) {
 }
 
 let percentUpdate;
-if (args.percentupdate) {
-  percentUpdate = args.percentupdate;
+if (args.['percent-update']) {
+  percentUpdate = args.['percent-update'];
   if (isNaN(parseFloat(percentUpdate)) || !isFinite(percentUpdate)) {
-    console.error('percentupdate must be a number.');
+    console.error('percent-update must be a number.');
     process.exit(1);
   }
 }
@@ -59,6 +59,16 @@ if (args.percentupdate) {
 let progressBar;
 if (args.progress) {
   progressBar = args.progress;
+}
+
+let retries = 10;
+if (args.retries) {
+  retries = args.retries;
+}
+
+let logRetries = false;
+if (args['log-retries']) {
+  logRetries = true;
 }
 
 function getStringFromStream(stream) {
@@ -77,13 +87,13 @@ function getStringFromStream(stream) {
 
 let completedMods = 0;
 
-function downloadMod(outputDir, url, disabled, numOfMods, percentUpdate, modsProgressBar) {
+function downloadMod(outputDir, url, disabled, numOfMods, percentUpdate, modsProgressBar, retries, logRetries) {
   let filename = downloader.getFileName(url) + (disabled ? '.disabled' : '');
   let outputPath = path.join(outputDir, 'mods', filename);
 
   let out = fs.createWriteStream(outputPath);
 
-  let download = downloader.downloadWithRetries(url, out, 10);
+  let download = downloader.downloadWithRetries(url, out, retries);
 
   if (typeof(percentUpdate) == 'number' && percentUpdate > 0) {
     let lastLoggedProgress = 0;
@@ -107,7 +117,9 @@ function downloadMod(outputDir, url, disabled, numOfMods, percentUpdate, modsPro
     console.log('Download error:');
     console.log(error);
   }).on('retry', (retry) => {
-    console.log('Retrying ' + filename);
+    if (logRetries) {
+      console.log('Retrying ' + filename);
+    }
   }).on('finish', () => {
     // nodejs runs on a single thread
     completedMods++;
@@ -189,12 +201,12 @@ prompt.get([{
 
           files.forEach((element) => {
             curseMods.getFileDownloadUrl(c, element.projectID, element.fileID).on('finish', (url) => {
-              downloadMod(outputDir, url, element.required == false, files.length, percentUpdate, progressBar);
+              downloadMod(outputDir, url, element.required == false, files.length, percentUpdate, progressBar, retries, logRetries);
             }).on('error', (error) => {
               if (error.type == 'bad response code') {
                 if (error.response.statusCode == 404) {
                   curseMods.getLatestDownloadUrl(c, element.projectID, manifest.minecraft.version).on('finish', (url) => {
-                    downloadMod(outputDir, url, element.required == false, files.length, percentUpdate, progressBar);
+                    downloadMod(outputDir, url, element.required == false, files.length, percentUpdate, progressBar, retries, logRetries);
                   }).on('error', (error) => {
                     console.log(error);
                   });
