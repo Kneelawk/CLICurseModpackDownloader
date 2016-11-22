@@ -16,7 +16,8 @@ function download(url, out) {
 
   let errorState = false;
 
-  request(url).on('response', (response) => {
+  let req = request(url);
+  req.on('response', (response) => {
     if (Math.floor(response.statusCode / 100) == 2) {
       if (response.headers['content-length']) {
         size = response.headers['content-length'];
@@ -42,7 +43,13 @@ function download(url, out) {
       // finish implies success
       callback.emit('finish');
     }
+  }).on('abort', () => {
+    callback.emit('abort');
   }).pipe(out);
+
+  callback.abort = () => {
+    req.abort();
+  };
 
   return callback;
 }
@@ -50,7 +57,8 @@ function download(url, out) {
 function downloadWithRetriesImpl(url, out, maxRetries, numRetries) {
   let callback = new DownloadCallback();
 
-  download(url, out).on('progress', (progress) => {
+  let req = download(url, out);
+  req.on('progress', (progress) => {
     callback.emit('progress', progress);
   }).on('finish', () => {
     callback.emit('finish');
@@ -58,7 +66,8 @@ function downloadWithRetriesImpl(url, out, maxRetries, numRetries) {
     if (error.type == 'bad response code') {
       callback.emit('error', error);
     } else if (numRetries < maxRetries) {
-      downloadWithRetriesImpl(url, out, maxRetries, numRetries + 1).on('progress', (progress) => {
+      let retryReq = downloadWithRetriesImpl(url, out, maxRetries, numRetries + 1);
+      retryReq.on('progress', (progress) => {
         callback.emit('progress', progress);
       }).on('finish', () => {
         callback.emit('finish');
@@ -74,7 +83,18 @@ function downloadWithRetriesImpl(url, out, maxRetries, numRetries) {
     } else {
       callback.emit('error', error);
     }
+  }).on('abort', () => {
+
   });
+
+  callback.retry = () => {
+    callback._retrying = true;
+    // TODO Finish retry and abort systems.
+  };
+
+  callback.abort = () => {
+
+  };
 
   return callback;
 }

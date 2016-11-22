@@ -95,9 +95,9 @@ function downloadMod(outputDir, url, disabled, numOfMods, percentUpdate, modsPro
 
   let download = downloader.downloadWithRetries(url, out, retries);
 
-  if (typeof(percentUpdate) == 'number' && percentUpdate > 0) {
-    let lastLoggedProgress = 0;
-    download.on('progress', (progress) => {
+  let lastLoggedProgress = 0;
+  download.on('progress', (progress) => {
+    if (typeof(percentUpdate) == 'number' && percentUpdate > 0) {
       if (progress.outOf > 0) {
         let percent = Math.floor(progress.progress * 100 / progress.outOf);
         if (Math.floor(percent / percentUpdate) > Math.floor(lastLoggedProgress / percentUpdate)) {
@@ -110,8 +110,8 @@ function downloadMod(outputDir, url, disabled, numOfMods, percentUpdate, modsPro
         }
         lastLoggedProgress = progress.progress;
       }
-    });
-  }
+    }
+  });
 
   download.on('error', (error) => {
     console.log('Download error:');
