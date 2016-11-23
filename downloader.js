@@ -81,12 +81,17 @@ class DownloadWithRetries extends Callback {
 
   _finishCallback() {
     this.downloading = false;
+    if (this.stream) {
+      this.stream.end();
+    }
     emit('finish');
   }
 
   _errorCallback(error) {
     this.downloading = false;
-    this.stream.end();
+    if (this.stream) {
+      this.stream.end();
+    }
     if (error.type = 'bad response code') {
       emit('error', error);
     } else if (retries < maxRetries) {
@@ -105,7 +110,9 @@ class DownloadWithRetries extends Callback {
 
   _abortCallback() {
     this.downloading = false;
-    this.stream.end();
+    if (this.stream) {
+      this.stream.end();
+    }
     if (this.retrying) {
       this.retrying = false;
       this.retries = 0;
