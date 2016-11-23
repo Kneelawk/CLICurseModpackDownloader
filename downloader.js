@@ -147,7 +147,5 @@ function getFileName(url) {
 module.exports = {
   download,
   getFileName,
-  downloadWithRetries: function(url, out, maxRetries) {
-    return downloadWithRetriesImpl(url, out, maxRetries, 0);
-  }
+  downloadWithRetries
 };
