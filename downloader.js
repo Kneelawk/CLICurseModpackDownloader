@@ -1,5 +1,6 @@
 const request = require('request');
 const Callback = require('events');
+const fs = require('fs');
 
 class DownloadCallback extends Callback {}
 
@@ -54,47 +55,87 @@ function download(url, out) {
   return callback;
 }
 
-function downloadWithRetriesImpl(url, out, maxRetries, numRetries) {
-  let callback = new DownloadCallback();
+class DownloadWithRetries extends Callback {
+  constructor(url, path, maxRetries) {
+    this.url = url;
+    this.path = path;
+    this.maxRetries = maxRetries;
+    this.retries = 0;
+    this.downloading = false;
+    this.retrying = false;
+  }
 
-  let req = download(url, out);
-  req.on('progress', (progress) => {
-    callback.emit('progress', progress);
-  }).on('finish', () => {
-    callback.emit('finish');
-  }).on('error', (error) => {
-    if (error.type == 'bad response code') {
-      callback.emit('error', error);
-    } else if (numRetries < maxRetries) {
-      let retryReq = downloadWithRetriesImpl(url, out, maxRetries, numRetries + 1);
-      retryReq.on('progress', (progress) => {
-        callback.emit('progress', progress);
-      }).on('finish', () => {
-        callback.emit('finish');
-      }).on('retry', (retry) => {
-        callback.emit('retry', retry);
-      }).on('error', (error) => {
-        callback.emit('error', error);
-      });
-      callback.emit('retry', {
+  start() {
+    this.stream = fs.createWriteStream(this.path);
+    this.req = download(this.url, this.stream);
+    req.on('progress', _progressCallback);
+    req.on('finish', _finishCallback);
+    req.on('error', _errorCallback);
+    req.on('abort', _abortCallback);
+    this.downloading = true;
+  }
+
+  _progressCallback(progress) {
+    emit('progress', progress);
+  }
+
+  _finishCallback() {
+    this.downloading = false;
+    emit('finish');
+  }
+
+  _errorCallback(error) {
+    this.downloading = false;
+    this.stream.end();
+    if (error.type = 'bad response code') {
+      emit('error', error);
+    } else if (retries < maxRetries) {
+      retries++;
+      start();
+      emit('retry', {
+        type: 'error retry',
         error,
-        numRetries
+        numRetries: retries,
+        maxRetries
+      })
+    } else {
+      emit('error', error);
+    }
+  }
+
+  _abortCallback() {
+    this.downloading = false;
+    this.stream.end();
+    if (this.retrying) {
+      this.retrying = false;
+      this.retries = 0;
+      start();
+      emit('retry', {
+        type: 'forced retry'
       });
     } else {
-      callback.emit('error', error);
+      emit('abort');
     }
-  }).on('abort', () => {
+  }
 
-  });
+  abort() {
+    if (this.downloading) {
+      this.req.abort();
+    }
+  }
 
-  callback.retry = () => {
-    callback._retrying = true;
-    // TODO Finish retry and abort systems.
-  };
+  retry() {
+    if (this.downloading) {
+      this.retrying = true;
+      this.req.abort();
+    }
+  }
+}
 
-  callback.abort = () => {
+function downloadWithRetries(url, out, maxRetries) {
+  let callback = new DownloadWithRetries(url, out, maxRetries);
 
-  };
+  callback.start();
 
   return callback;
 }
