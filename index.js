@@ -48,8 +48,8 @@ if (args.password) {
 }
 
 let percentUpdate;
-if (args.['percent-update']) {
-  percentUpdate = args.['percent-update'];
+if (args['percent-update']) {
+  percentUpdate = args['percent-update'];
   if (isNaN(parseFloat(percentUpdate)) || !isFinite(percentUpdate)) {
     console.error('percent-update must be a number.');
     process.exit(1);
@@ -71,6 +71,19 @@ if (args['log-retries']) {
   logRetries = true;
 }
 
+let logZombieDownloads = false;
+if (args['log-zombie-downlads']) {
+  logZombieDownloads = true;
+}
+
+let zombieDownloadTimeout = 120;
+if (args['zombie-download-timeout']) {
+  zombieDownloadTimeout = args['zombie-download-timeout'];
+  if (isNaN(parseFloat(zombieDownloadTimeout)) || !isFinite(zombieDownloadTimeout)) {
+    console.log('zombie-download-timeout must be a number.');
+  }
+}
+
 function getStringFromStream(stream) {
   let callback = new Callback();
 
@@ -86,53 +99,110 @@ function getStringFromStream(stream) {
 }
 
 let completedMods = 0;
+let numOfMods = 0;
 
-function downloadMod(outputDir, url, disabled, numOfMods, percentUpdate, modsProgressBar, retries, logRetries) {
-  let filename = downloader.getFileName(url) + (disabled ? '.disabled' : '');
-  let outputPath = path.join(outputDir, 'mods', filename);
+class ModDownload extends Callback {
+  constructor(outputDir, url, disabled) {
+    super();
+    this.outputDir = outputDir;
+    this.filename = downloader.getFileName(url) + (disabled ? '.disabled' : '');
+    this.outputPath = path.join(outputDir, 'mods', this.filename);
+    this.url = url;
+    this.disabled = disabled;
+    this.lastUpdate = new Date();
+  }
 
-  let out = fs.createWriteStream(outputPath);
+  start() {
+    this.download = downloader.downloadWithRetries(this.url, this.outputPath, retries);
 
-  let download = downloader.downloadWithRetries(url, out, retries);
+    this._lastLoggedAmount = 0;
+    this.download.on('progress', (progress) => this._progressCallback(progress));
+    this.download.on('error', (error) => this._errorCallback(error));
+    this.download.on('finish', () => this._finishCallback());
+    this.download.on('retry', (retry) => this._retryCallback(retry));
+  }
 
-  let lastLoggedProgress = 0;
-  download.on('progress', (progress) => {
-    if (typeof(percentUpdate) == 'number' && percentUpdate > 0) {
+  _progressCallback(progress) {
+    this.lastUpdate = new Date();
+    if (typeof (percentUpdate) == 'number' && percentUpdate > 0) {
       if (progress.outOf > 0) {
         let percent = Math.floor(progress.progress * 100 / progress.outOf);
-        if (Math.floor(percent / percentUpdate) > Math.floor(lastLoggedProgress / percentUpdate)) {
-          console.log(percent + '%: ' + filename);
+        if (Math.floor(percent / percentUpdate) > Math.floor(this._lastLoggedAmount > percentUpdate)) {
+          console.log(percent + '%: ' + this.filename);
         }
-        lastLoggedProgress = percent;
+        this._lastLoggedAmount = percent;
       } else {
-        if (Math.floor(progress.progress / percentUpdate) > Math.floor(lastLoggedProgress / percentUpdate)) {
-          console.log(Math.floor(progress.progress / 1024) + 'KiB: ' + filename);
+        if (Math.floor(progress.progress / (percentUpdate * 10240)) > Math.floor(this._lastLoggedProgress / (percentUpdate * 10240))) {
+          console.log(Math.floor(progress.progress / 1024) + 'KiB: ' + this.filename);
         }
-        lastLoggedProgress = progress.progress;
+        this._lastLoggedAmount = percent;
       }
     }
-  });
+  }
 
-  download.on('error', (error) => {
+  _errorCallback(error) {
     console.log('Download error:');
     console.log(error);
-  }).on('retry', (retry) => {
+  }
+
+  _retryCallback(retry) {
     if (logRetries) {
-      console.log('Retrying ' + filename);
+      console.log('Retrying: ' + this.filename);
     }
-  }).on('finish', () => {
+  }
+
+  _finishCallback() {
     // nodejs runs on a single thread
     completedMods++;
 
-    if (modsProgressBar == 'log') {
-      console.log('Completed download: ' + filename);
+    if (progressBar == 'log') {
+      console.log('Completed download: ' + this.filename);
       console.log('Completed: ' + completedMods + ' / ' + numOfMods + ' (' + Math.floor(completedMods * 100 / numOfMods) + '%)');
-    } else if (modsProgressBar) {
-      modsProgressBar.tick();
+    } else if (progressBar) {
+      progressBar.tick();
     }
 
-    out.end();
-  });
+    this.emit('finish');
+  }
+
+  retry() {
+    this.download.retry();
+  }
+}
+
+function downloadMod(outputDir, url, disabled) {
+  let download = new ModDownload(outputDir, url, disabled);
+
+  download.start();
+
+  return download;
+}
+
+let zombieDownloadKillerId;
+
+function dateMinutes(d) {
+  return Math.floor(d.getTime() / 60000);
+}
+
+function zombieDownloadKiller(downloads) {
+  let len = downloads.length;
+  for (let i = 0; i < len; i++) {
+    let download = downloads[i];
+    if (dateMinutes(new Date()) >= dateMinutes(download.lastUpdate) + 2) {
+      if (logZombieDownloads) {
+        console.log('Found zombie download: ' + download.filename);
+      }
+      download.retry();
+    }
+  }
+}
+
+let zipClosed = false;
+
+function finishCallback() {
+  if (completedMods >= numOfMods && zipClosed) {
+    clearInterval(zombieDownloadKillerId);
+  }
 }
 
 prompt.override = {
@@ -190,6 +260,7 @@ prompt.get([{
           }
 
           let files = manifest.files;
+          numOfMods = files.length;
           console.log('Downloading ' + files.length + ' files...');
 
           if (progressBar == 'bar') {
@@ -199,18 +270,29 @@ prompt.get([{
             });
           }
 
+          let downloads = [];
+
+          zombieDownloadKillerId = setInterval(zombieDownloadKiller, 15000, downloads);
+
           files.forEach((element) => {
             curseMods.getFileDownloadUrl(c, element.projectID, element.fileID).on('finish', (url) => {
-              downloadMod(outputDir, url, element.required == false, files.length, percentUpdate, progressBar, retries, logRetries);
+              let download = downloadMod(outputDir, url, element.required == false);
+              downloads.push(download);
+              download.on('finish', finishCallback);
             }).on('error', (error) => {
               if (error.type == 'bad response code') {
                 if (error.response.statusCode == 404) {
                   curseMods.getLatestDownloadUrl(c, element.projectID, manifest.minecraft.version).on('finish', (url) => {
-                    downloadMod(outputDir, url, element.required == false, files.length, percentUpdate, progressBar, retries, logRetries);
+                    let download = downloadMod(outputDir, url, element.required == false);
+                    downloads.push(download);
+                    download.on('finish', finishCallback);
                   }).on('error', (error) => {
                     console.log(error);
                   });
                 }
+              } else {
+                console.log('Rest Error:');
+                console.log(error);
               }
             });
           });
@@ -227,6 +309,9 @@ prompt.get([{
         }
         entry.pipe(fs.createWriteStream(path.join(outputDir, outPath)));
       }
+    }).on('close', () => {
+      zipClosed = true;
+      finishCallback();
     });
   }).on('error', (error) => {
     if (error.type == 'bad response code' && error.response.statusCode == 401) {

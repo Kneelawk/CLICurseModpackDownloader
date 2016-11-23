@@ -57,6 +57,7 @@ function download(url, out) {
 
 class DownloadWithRetries extends Callback {
   constructor(url, path, maxRetries) {
+    super();
     this.url = url;
     this.path = path;
     this.maxRetries = maxRetries;
@@ -68,15 +69,15 @@ class DownloadWithRetries extends Callback {
   start() {
     this.stream = fs.createWriteStream(this.path);
     this.req = download(this.url, this.stream);
-    req.on('progress', _progressCallback);
-    req.on('finish', _finishCallback);
-    req.on('error', _errorCallback);
-    req.on('abort', _abortCallback);
+    this.req.on('progress', (progress) => this._progressCallback(progress));
+    this.req.on('finish', () => this._finishCallback());
+    this.req.on('error', (error) => this._errorCallback(error));
+    this.req.on('abort', () => this._abortCallback());
     this.downloading = true;
   }
 
   _progressCallback(progress) {
-    emit('progress', progress);
+    this.emit('progress', progress);
   }
 
   _finishCallback() {
@@ -84,7 +85,7 @@ class DownloadWithRetries extends Callback {
     if (this.stream) {
       this.stream.end();
     }
-    emit('finish');
+    this.emit('finish');
   }
 
   _errorCallback(error) {
@@ -93,18 +94,18 @@ class DownloadWithRetries extends Callback {
       this.stream.end();
     }
     if (error.type = 'bad response code') {
-      emit('error', error);
+      this.emit('error', error);
     } else if (retries < maxRetries) {
       retries++;
-      start();
-      emit('retry', {
+      this.start();
+      this.emit('retry', {
         type: 'error retry',
         error,
         numRetries: retries,
         maxRetries
       })
     } else {
-      emit('error', error);
+      this.emit('error', error);
     }
   }
 
@@ -116,12 +117,12 @@ class DownloadWithRetries extends Callback {
     if (this.retrying) {
       this.retrying = false;
       this.retries = 0;
-      start();
-      emit('retry', {
+      this.start();
+      this.emit('retry', {
         type: 'forced retry'
       });
     } else {
-      emit('abort');
+      this.emit('abort');
     }
   }
 
