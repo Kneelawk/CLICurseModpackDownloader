@@ -81,6 +81,7 @@ if (args['zombie-download-timeout']) {
   zombieDownloadTimeout = args['zombie-download-timeout'];
   if (isNaN(parseFloat(zombieDownloadTimeout)) || !isFinite(zombieDownloadTimeout)) {
     console.log('zombie-download-timeout must be a number.');
+    process.exit(1);
   }
 }
 
@@ -110,6 +111,7 @@ class ModDownload extends Callback {
     this.url = url;
     this.disabled = disabled;
     this.lastUpdate = new Date();
+    this.finished = false;
   }
 
   start() {
@@ -155,6 +157,8 @@ class ModDownload extends Callback {
     // nodejs runs on a single thread
     completedMods++;
 
+    this.finished = true;
+
     if (progressBar == 'log') {
       console.log('Completed download: ' + this.filename);
       console.log('Completed: ' + completedMods + ' / ' + numOfMods + ' (' + Math.floor(completedMods * 100 / numOfMods) + '%)');
@@ -180,15 +184,15 @@ function downloadMod(outputDir, url, disabled) {
 
 let zombieDownloadKillerId;
 
-function dateMinutes(d) {
-  return Math.floor(d.getTime() / 60000);
+function dateSeconds(d) {
+  return d.getTime() / 1000;
 }
 
 function zombieDownloadKiller(downloads) {
   let len = downloads.length;
   for (let i = 0; i < len; i++) {
     let download = downloads[i];
-    if (dateMinutes(new Date()) >= dateMinutes(download.lastUpdate) + 2) {
+    if (!download.finished && dateSeconds(new Date()) >= dateSeconds(download.lastUpdate) + zombieDownloadTimeout) {
       if (logZombieDownloads) {
         console.log('Found zombie download: ' + download.filename);
       }
