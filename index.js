@@ -311,6 +311,14 @@ prompt.get([{
           numOfMods = files.length;
           console.log('Downloading ' + files.length + ' files...');
 
+          if (progressBar == 'bar' || progressBar == 'log') {
+            console.log(`Using progress: ${progressBar}`);
+          } else if (!progressBar) {
+            console.log('Not sending progress updates.');
+          } else {
+            console.log('WARNING: unknown progress display type.');
+          }
+
           if (progressBar == 'bar') {
             progressBar = new ProgressBar('Downloading [:bar] :percent (:current / :total)', {
               total: files.length,
