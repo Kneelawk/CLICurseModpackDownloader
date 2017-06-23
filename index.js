@@ -28,14 +28,14 @@ Options:
 -f <modpack-zip>                    - The modpack file containing the manifest
                                       and overrides. (The file downloaded from
                                       curse.) (Defaults to stdin.)
--username <username>                - The username used to log into curse.
+--username <username>               - The username used to log into curse.
                                       (Leave blank to prompt during execution.)
--password <password>                - The password used to log into curse.
+--password <password>               - The password used to log into curse.
                                       (Leave blank to prompt during execution.)
--percent-update <percent-update>    - The percentage interval of a download at
+--percent-update <percent-update>   - The percentage interval of a download at
                                       which the progress will be logged. (Leave
                                       blank to not log percentage updates.)
--progress <display-type>            - How should progress updates be displayed?
+--progress <display-type>           - How should progress updates be displayed?
                                       Options:
                                       bar - A bar at the bottom of the terminal
                                             will show overall download progress.
@@ -44,17 +44,17 @@ Options:
                                           - Blank will not log any overall
                                             progress updates.
                                       (Defaults to blank.)
--retries <retries>                  - How many times should the downloader retry
+--retries <retries>                 - How many times should the downloader retry
                                       an unsuccessful download. (Defaults to 10
                                       retries.)
--log-retries                        - Should we log download retries?
--log-zombie-downloads               - Should we log evey time we kill a zombie
+--log-retries                       - Should we log download retries?
+--log-zombie-downloads              - Should we log evey time we kill a zombie
                                       download?
--zombie-download-timeout <seconds>  - How long should we wait before a download
+--zombie-download-timeout <seconds> - How long should we wait before a download
                                       is considered a zombie. (Defaults to 120
                                       seconds.)
--help                               - Displays this help page.
--h                                  - Displays this help page.`;
+--help                              - Displays this help page.
+-h                                  - Displays this help page.
 
 let args = minimist(process.argv.slice(2));
 
