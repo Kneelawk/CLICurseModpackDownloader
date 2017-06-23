@@ -18,7 +18,48 @@ const curseMods = require('./curseMods.js');
 // constants
 const overridesLen = 'overrides/'.length;
 
+const help = `CLI Curse Modpack Downloader Help:
+Usage: [options] [-f <modpack-zip>] [-d <output-dir>]
+
+Options:
+-d <output-dir>                     - The directory that the modpack is
+                                      extracted and downloaded to. (Defaults to
+                                      the current working dir.)
+-f <modpack-zip>                    - The modpack file containing the manifest
+                                      and overrides. (The file downloaded from
+                                      curse.) (Defaults to stdin.)
+-username <username>                - The username used to log into curse.
+                                      (Leave blank to prompt during execution.)
+-password <password>                - The password used to log into curse.
+                                      (Leave blank to prompt during execution.)
+-percent-update <percent-update>    - The percentage interval of a download at
+                                      which the progress will be logged. (Leave
+                                      blank to not log percentage updates.)
+-progress <display-type>            - How should progress updates be displayed?
+                                      Options:
+                                      bar - A bar at the bottom of the terminal
+                                            will show overall download progress.
+                                      log - Log a message for every increment of
+                                            overall progress.
+                                          - Blank will not log any overall
+                                            progress updates.
+                                      (Defaults to blank.)
+-retries <retries>                  - How many times should the downloader retry
+                                      an unsuccessful download.
+-log-retries                        - Should we log download retries?
+-log-zombie-downloads               - Should we log evey time we kill a zombie
+                                      download?
+-zombie-download-timeout <seconds>  - How long should we wait before a download
+                                      is considered a zombie.
+-help                               - Displays this help page.
+-h                                  - Displays this help page.`;
+
 let args = minimist(process.argv.slice(2));
+
+if (args.h || args.help) {
+  console.log(help);
+  process.exit(0);
+}
 
 let outputDir = process.cwd();
 if (args.d) {
@@ -34,6 +75,7 @@ if (args.f) {
 
 if (!args.f && (!args.username || !args.password)) {
   console.error('A username and password are required when reading modpack from stdin.');
+  console.log(help);
   process.exit(1);
 }
 
