@@ -53,8 +53,9 @@ Options:
 --zombie-download-timeout <seconds> - How long should we wait before a download
                                       is considered a zombie. (Defaults to 120
                                       seconds.)
+--logoverrides                      - Log every file in the modpack's overrides.
 --help                              - Displays this help page.
--h                                  - Displays this help page.
+-h                                  - Displays this help page.`;
 
 let args = minimist(process.argv.slice(2));
 
